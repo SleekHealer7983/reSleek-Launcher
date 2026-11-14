@@ -1,6 +1,6 @@
 # reSleek Launcher
 
-一个面向 Windows 的桌面启动器：把常用应用、桌面文件、U 盘内容、主题和系统设置收进一个 Material 3 Expressive 界面里。
+一个面向 Windows 的班级大屏桌面启动器：把常用应用、桌面文件、U 盘内容、主题和系统设置收进一个 Material 3 Expressive 界面里。
 
 ![reSleek Launcher](docs/screenshot.png)
 
@@ -73,6 +73,7 @@ npm run tauri -- build --no-bundle
 
 ## 说明
 
+-小孩子不懂事瞎做着玩的（划掉）
 - 浏览器预览（`npm run dev`）使用演示应用和文件；在 Tauri 里才读取真实系统数据。
 - 应用扫描和图标提取依赖 Windows PowerShell；首次扫描会慢一点。
 - U 盘文件夹预览和弹出使用新增的 Tauri 命令，修改 Rust 后需要重启 `tauri dev`。
