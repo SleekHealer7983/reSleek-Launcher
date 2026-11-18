@@ -63,3 +63,13 @@ export async function recyclePath(path: string) {
   }
   await invoke("recycle_path", { path });
 }
+
+export async function systemAutostartExists(): Promise<boolean> {
+  if (!isDesktop) return false;
+  return invoke<boolean>("system_autostart_exists");
+}
+
+export async function removeSystemAutostart() {
+  if (!isDesktop) return;
+  await invoke("remove_system_autostart");
+}

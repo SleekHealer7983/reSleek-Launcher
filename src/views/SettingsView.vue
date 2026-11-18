@@ -3,7 +3,11 @@ import { computed, onMounted, ref, watch } from "vue";
 import { MSwitch } from "material/vue";
 import ThemePicker from "../components/ThemePicker.vue";
 import ClockDisplay from "../components/ClockDisplay.vue";
-import { isDesktop } from "../services/backend";
+import {
+  isDesktop,
+  removeSystemAutostart,
+  systemAutostartExists,
+} from "../services/backend";
 import { resetSettings, settings } from "../settings";
 
 type SectionId =
@@ -92,15 +96,21 @@ watch(search, () => {
 const autostart = ref(false);
 const autostartBusy = ref(false);
 const autostartError = ref("");
+const autostartSystem = ref(false);
 const fullscreen = ref(settings.fullscreen);
 const fullscreenBusy = ref(false);
+
+async function readAutostartState() {
+  const { isEnabled } = await import("@tauri-apps/plugin-autostart");
+  autostart.value = await isEnabled();
+  autostartSystem.value = await systemAutostartExists();
+}
 
 onMounted(async () => {
   if (!isDesktop) return;
 
   try {
-    const { isEnabled } = await import("@tauri-apps/plugin-autostart");
-    autostart.value = await isEnabled();
+    await readAutostartState();
   } catch {
     autostartError.value = "无法读取开机启动状态";
   }
@@ -120,11 +130,35 @@ async function setAutostart(value: boolean) {
   autostartError.value = "";
   try {
     const plugin = await import("@tauri-apps/plugin-autostart");
-    if (value) await plugin.enable();
-    else await plugin.disable();
-    autostart.value = value;
-  } catch {
-    autostartError.value = "设置开机启动失败";
+
+    if (value) {
+      // Old elevated runs wrote to HKLM. Migrate to a per-user entry after
+      // removing the system-level value with an explicit UAC prompt.
+      if (autostartSystem.value) await removeSystemAutostart();
+      await plugin.enable();
+    } else {
+      await plugin.disable();
+      // A non-elevated process cannot delete HKLM; ask for elevation only
+      // when a stale system-level entry is actually present.
+      if (autostartSystem.value) await removeSystemAutostart();
+    }
+
+    await readAutostartState();
+    if (autostart.value !== value) {
+      autostartError.value = value
+        ? "开机启动没有成功启用"
+        : "系统级启动项未移除，需要管理员权限";
+    }
+  } catch (error) {
+    console.error(error);
+    autostartError.value = value
+      ? "设置开机启动失败"
+      : "关闭失败：系统级启动项需要管理员权限";
+    try {
+      await readAutostartState();
+    } catch {
+      // Keep the current switch state when the status cannot be read.
+    }
   } finally {
     autostartBusy.value = false;
   }
@@ -317,6 +351,9 @@ function restoreHiddenApps() {
                   <p>登录 Windows 后自动打开 reSleek Launcher。</p>
                   <span v-if="!isDesktop" class="setting-note">仅在桌面端可用</span>
                   <span v-else-if="autostartError" class="setting-error">{{ autostartError }}</span>
+                  <span v-else-if="autostartSystem" class="setting-note">
+                    检测到系统级启动项（HKLM）；关闭时会请求管理员权限。
+                  </span>
                 </div>
                 <MSwitch
                   :model-value="autostart"

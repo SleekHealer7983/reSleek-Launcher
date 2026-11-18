@@ -388,6 +388,50 @@ fn list_folder_files(path: String) -> Result<Vec<FileEntry>, String> {
 }
 
 #[tauri::command]
+fn system_autostart_exists() -> Result<bool, String> {
+    let script = "$value = Get-ItemPropertyValue -Path 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'resleek-launcher' -ErrorAction SilentlyContinue\n\
+                  if ($null -ne $value) { 'true' } else { 'false' }";
+    let output = run_powershell_script(script, "autostart-system-check.ps1")?;
+    Ok(output.trim().eq_ignore_ascii_case("true"))
+}
+
+#[tauri::command]
+fn remove_system_autostart() -> Result<(), String> {
+    if !system_autostart_exists()? {
+        return Ok(());
+    }
+
+    let script_dir = std::env::temp_dir().join("resleek-launcher");
+    fs::create_dir_all(&script_dir).map_err(|error| format!("创建临时目录失败: {error}"))?;
+    let cleanup_path = script_dir.join("remove-system-autostart.ps1");
+    let cleanup_script = "$ErrorActionPreference = 'SilentlyContinue'\n\
+        Remove-ItemProperty -Path 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'resleek-launcher'\n\
+        Remove-ItemProperty -Path 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run' -Name 'resleek-launcher'\n";
+    fs::write(&cleanup_path, cleanup_script).map_err(|error| format!("写入清理脚本失败: {error}"))?;
+
+    let escaped_path = cleanup_path.to_string_lossy().replace('\'', "''");
+    let runner = format!(
+        r#"$ErrorActionPreference = 'Stop'
+$cleanup = '{escaped_path}'
+$arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + $cleanup + '"'
+try {{
+    $process = Start-Process -FilePath 'powershell.exe' -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList $arguments
+}} catch {{
+    Write-Error $_.Exception.Message
+    exit 1
+}}
+exit $process.ExitCode
+"#
+    );
+    run_powershell_script(&runner, "autostart-elevated.ps1")?;
+
+    if system_autostart_exists()? {
+        return Err("系统级启动项仍在，请确认已允许管理员权限".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn eject_drive(letter: String) -> Result<(), String> {
     let trimmed = letter
         .trim()
@@ -535,6 +579,8 @@ pub fn run() {
             list_drive_files,
             list_folder_files,
             eject_drive,
+            system_autostart_exists,
+            remove_system_autostart,
             copy_to_desktop,
             recycle_path,
             open_path
