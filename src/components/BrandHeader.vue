@@ -1,16 +1,24 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import ClockDisplay from "./ClockDisplay.vue";
+import { settings } from "../settings";
 
 defineProps<{
   title: string;
 }>();
+
+const logoSrc = computed(() =>
+  settings.dark
+    ? "/assets/reSleekLogoDark.png"
+    : "/assets/reSleekLogoLight.png",
+);
 </script>
 
 <template>
   <header class="brand-header">
     <img
       class="brand-mark"
-      src="/assets/reSleekLogo.png"
+      :src="logoSrc"
       alt="reSleek"
     />
 
